@@ -1,6 +1,6 @@
-use crate::{client::Client, ClientID, CsvLine, CsvLineType, TransactionID};
-
-pub type TransactionError = String;
+use crate::{
+    client::Client, error::TransactionError, ClientID, CsvLine, CsvLineType, TransactionID,
+};
 
 pub trait Transaction {
     /// Execute the transaction on the ClientStore.
@@ -91,7 +91,7 @@ impl Transaction for Withdrawal {
     /// Remove money to available balance of the acount
     fn execute(&self, client: &mut Client) -> Result<(), TransactionError> {
         if client.available < self.ammount {
-            Err("Insufficent funds!".to_string())
+            Err("Insufficent funds!".into())
         } else {
             client.available -= self.ammount;
             Ok(())
