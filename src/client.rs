@@ -52,12 +52,17 @@ impl ClientStore {
     {
         match self.clients.get_mut(&transaction.requested_client_id()) {
             Some(client) => {
-                transaction.execute(client);
+                let _ = transaction
+                    .execute(client)
+                    .map_err(|err| eprintln!("Could not execute transation: {}", err));
             }
             None => {
                 let mut new_client = Client::new(transaction.requested_client_id());
-                transaction.execute(&mut new_client);
-                self.clients.insert(transaction.requested_client_id(), new_client);
+                let _ = transaction
+                    .execute(&mut new_client)
+                    .map_err(|err| eprintln!("Could not execute transation: {}", err));
+                self.clients
+                    .insert(transaction.requested_client_id(), new_client);
             }
         }
     }
@@ -109,7 +114,7 @@ mod tests {
         struct TestTransaction {}
         impl Transaction for TestTransaction {
             fn execute(&self, client: &mut Client) -> Result<(), TransactionError> {
-                // Add one to client 
+                // Add one to client
                 client.available += 1.0;
                 client.held += 1.0;
                 Ok(())
@@ -134,7 +139,7 @@ mod tests {
     fn client_store_null_transaction() {
         struct TestTransaction {}
         impl Transaction for TestTransaction {
-            fn execute(&self, client: &mut Client) -> Result<(), TransactionError> {
+            fn execute(&self, _client: &mut Client) -> Result<(), TransactionError> {
                 Ok(())
             }
 
@@ -178,7 +183,10 @@ mod tests {
         client_store.execute(TestTransaction { id: 1 });
         client_store.execute(TestTransaction { id: 1 });
         client_store.execute(TestTransaction { id: 1 });
-        assert_eq!(client_store.clients.get(&1).unwrap().available, 4.5689 + 4.5689 + 4.5689 + 4.5689);
+        assert_eq!(
+            client_store.clients.get(&1).unwrap().available,
+            4.5689 + 4.5689 + 4.5689 + 4.5689
+        );
         assert_eq!(client_store.clients.get(&1).unwrap().held, 0.0);
         assert_eq!(client_store.clients.get(&1).unwrap().locked, false);
     }
@@ -212,10 +220,16 @@ mod tests {
         client_store.execute(TestTransaction { id: 1 });
         client_store.execute(TestTransaction { id: 1 });
         client_store.execute(TestTransaction { id: 2 });
-        assert_eq!(client_store.clients.get(&1).unwrap().available, 4.5689 + 4.5689 + 4.5689 + 4.5689);
+        assert_eq!(
+            client_store.clients.get(&1).unwrap().available,
+            4.5689 + 4.5689 + 4.5689 + 4.5689
+        );
         assert_eq!(client_store.clients.get(&1).unwrap().held, 0.0);
         assert_eq!(client_store.clients.get(&1).unwrap().locked, false);
-        assert_eq!(client_store.clients.get(&1).unwrap().available, 4.5689 + 4.5689 + 4.5689 + 4.5689);
+        assert_eq!(
+            client_store.clients.get(&1).unwrap().available,
+            4.5689 + 4.5689 + 4.5689 + 4.5689
+        );
         assert_eq!(client_store.clients.get(&1).unwrap().held, 0.0);
         assert_eq!(client_store.clients.get(&1).unwrap().locked, false);
     }

@@ -1,4 +1,4 @@
-use crate::{client::Client, ClientID, TransactionID};
+use crate::{client::Client, ClientID, CsvLine, CsvLineType, TransactionID};
 
 pub type TransactionError = String;
 
@@ -6,9 +6,7 @@ pub trait Transaction {
     /// Execute the transaction on the ClientStore.
     ///
     /// Generic execute call for all transactions.
-    fn execute(&self, client: &mut Client) -> Result<(), TransactionError> {
-        unimplemented!()
-    }
+    fn execute(&self, client: &mut Client) -> Result<(), TransactionError>;
 
     /// Get the Client ID this transaction is meant to run against
     ///
@@ -21,6 +19,22 @@ pub trait Transaction {
     fn transaction_id(&self) -> TransactionID;
 }
 
+impl From<CsvLine> for Box<dyn Transaction> {
+    fn from(csv_line: CsvLine) -> Self {
+        match csv_line.t_type {
+            CsvLineType::Deposit => {
+                Box::new(Deposit::new(csv_line.tx, csv_line.client, csv_line.amount))
+                    as Box<dyn Transaction>
+            }
+            CsvLineType::Withdrawal => Box::new(Withdrawal::new(
+                csv_line.tx,
+                csv_line.client,
+                csv_line.amount,
+            )) as Box<dyn Transaction>,
+        }
+    }
+}
+
 struct Deposit {
     transaction_id: TransactionID,
     client_id: ClientID,
@@ -29,7 +43,11 @@ struct Deposit {
 
 impl Deposit {
     pub fn new(transaction_id: TransactionID, client_id: ClientID, ammount: f64) -> Self {
-        Self { transaction_id, client_id, ammount }
+        Self {
+            transaction_id,
+            client_id,
+            ammount,
+        }
     }
 }
 
@@ -59,7 +77,11 @@ struct Withdrawal {
 
 impl Withdrawal {
     pub fn new(transaction_id: TransactionID, client_id: ClientID, ammount: f64) -> Self {
-        Self { transaction_id, client_id, ammount }
+        Self {
+            transaction_id,
+            client_id,
+            ammount,
+        }
     }
 }
 
