@@ -6,17 +6,34 @@ use serde::{ser::SerializeStruct as _, Serialize, Serializer};
 
 use crate::error::TransactionError;
 use crate::transaction::Transaction;
-use crate::ClientID;
+use crate::{Amount, ClientID, TransactionID};
 
-/// Representation of
+#[derive(Debug, PartialEq)]
+pub struct History {
+    pub amount: Amount,
+    pub dispute: bool,
+}
+
+impl History {
+    pub fn new(amount: Amount) -> Self {
+        Self {
+            amount,
+            dispute: false,
+        }
+    }
+}
+
+/// Representation of a client's account
 pub struct Client {
     pub id: ClientID,
     /// Ammount of currently available funds
-    pub available: f64,
+    pub available: Amount,
     /// Ammount of currently held funds
-    pub held: f64,
+    pub held: Amount,
     /// Client is locked status
     pub locked: bool,
+    /// Collection of all transactions
+    pub client_history: HashMap<TransactionID, History>,
 }
 
 impl Client {
@@ -26,13 +43,14 @@ impl Client {
             available: 0.0,
             held: 0.0,
             locked: false,
+            client_history: HashMap::new(),
         }
     }
 
     /// Get the total ammount of funds
     ///
     /// This is `available funds` + `held funds`
-    fn total(&self) -> f64 {
+    pub fn total(&self) -> Amount {
         self.available + self.held
     }
 }
@@ -143,80 +161,68 @@ mod tests {
         assert!(client_store.clients.is_empty())
     }
 
-    #[test]
-    fn client_store_plus_1_transaction() {
-        struct TestTransaction {}
-        impl Transaction for TestTransaction {
-            fn execute(&self, client: &mut Client) -> Result<(), TransactionError> {
-                // Add one to client
-                client.available += 1.0;
-                client.held += 1.0;
-                Ok(())
-            }
+    struct TestTransaction {
+        id: ClientID,
+        amount: Amount,
+    }
 
-            fn requested_client_id(&self) -> ClientID {
-                1
-            }
-
-            fn transaction_id(&self) -> crate::TransactionID {
-                1
-            }
+    impl Transaction for TestTransaction {
+        fn execute(&self, client: &mut Client) -> Result<(), TransactionError> {
+            client.available += self.amount;
+            Ok(())
         }
-        let mut client_store = ClientStore::new();
-        client_store.execute(&TestTransaction {}).unwrap();
-        assert_eq!(client_store.clients.get(&1).unwrap().available, 1.0);
-        assert_eq!(client_store.clients.get(&1).unwrap().held, 1.0);
-        assert_eq!(client_store.clients.get(&1).unwrap().locked, false);
+
+        fn requested_client_id(&self) -> ClientID {
+            self.id
+        }
+
+        fn transaction_id(&self) -> crate::TransactionID {
+            1
+        }
+
+        fn amount(&self) -> Option<Amount> {
+            Some(self.amount)
+        }
     }
 
     #[test]
-    fn client_store_null_transaction() {
-        struct TestTransaction {}
-        impl Transaction for TestTransaction {
-            fn execute(&self, _client: &mut Client) -> Result<(), TransactionError> {
-                Ok(())
-            }
-
-            fn requested_client_id(&self) -> ClientID {
-                1
-            }
-
-            fn transaction_id(&self) -> crate::TransactionID {
-                1
-            }
-        }
+    fn client_store_plus_1_transaction() {
         let mut client_store = ClientStore::new();
-        client_store.execute(&TestTransaction {}).unwrap();
-        assert_eq!(client_store.clients.get(&1).unwrap().available, 0.0);
+        client_store
+            .execute(&TestTransaction { id: 1, amount: 1.0 })
+            .unwrap();
+        assert_eq!(client_store.clients.get(&1).unwrap().available, 1.0);
         assert_eq!(client_store.clients.get(&1).unwrap().held, 0.0);
         assert_eq!(client_store.clients.get(&1).unwrap().locked, false);
     }
 
     #[test]
     fn client_store_add_available_transaction_multiple() {
-        struct TestTransaction {
-            id: ClientID,
-        }
-        impl Transaction for TestTransaction {
-            fn execute(&self, client: &mut Client) -> Result<(), TransactionError> {
-                // Add 4.5689 to avaialble
-                client.available += 4.5689;
-                Ok(())
-            }
-
-            fn requested_client_id(&self) -> ClientID {
-                self.id
-            }
-
-            fn transaction_id(&self) -> crate::TransactionID {
-                1
-            }
-        }
         let mut client_store = ClientStore::new();
-        client_store.execute(&TestTransaction { id: 1 }).unwrap();
-        client_store.execute(&TestTransaction { id: 1 }).unwrap();
-        client_store.execute(&TestTransaction { id: 1 }).unwrap();
-        client_store.execute(&TestTransaction { id: 1 }).unwrap();
+        client_store
+            .execute(&TestTransaction {
+                id: 1,
+                amount: 4.5689,
+            })
+            .unwrap();
+        client_store
+            .execute(&TestTransaction {
+                id: 1,
+                amount: 4.5689,
+            })
+            .unwrap();
+        client_store
+            .execute(&TestTransaction {
+                id: 1,
+                amount: 4.5689,
+            })
+            .unwrap();
+        client_store
+            .execute(&TestTransaction {
+                id: 1,
+                amount: 4.5689,
+            })
+            .unwrap();
         assert_eq!(
             client_store.clients.get(&1).unwrap().available,
             4.5689 + 4.5689 + 4.5689 + 4.5689
@@ -227,33 +233,55 @@ mod tests {
 
     #[test]
     fn client_store_add_available_transaction_multiple_with_different_clients() {
-        struct TestTransaction {
-            id: ClientID,
-        }
-        impl Transaction for TestTransaction {
-            fn execute(&self, client: &mut Client) -> Result<(), TransactionError> {
-                // Add 4.5689 to avaialble
-                client.available += 4.5689;
-                Ok(())
-            }
-
-            fn requested_client_id(&self) -> ClientID {
-                self.id
-            }
-
-            fn transaction_id(&self) -> crate::TransactionID {
-                1
-            }
-        }
         let mut client_store = ClientStore::new();
-        client_store.execute(&TestTransaction { id: 1 }).unwrap();
-        client_store.execute(&TestTransaction { id: 2 }).unwrap();
-        client_store.execute(&TestTransaction { id: 1 }).unwrap();
-        client_store.execute(&TestTransaction { id: 2 }).unwrap();
-        client_store.execute(&TestTransaction { id: 2 }).unwrap();
-        client_store.execute(&TestTransaction { id: 1 }).unwrap();
-        client_store.execute(&TestTransaction { id: 1 }).unwrap();
-        client_store.execute(&TestTransaction { id: 2 }).unwrap();
+        client_store
+            .execute(&TestTransaction {
+                id: 1,
+                amount: 4.5689,
+            })
+            .unwrap();
+        client_store
+            .execute(&TestTransaction {
+                id: 2,
+                amount: 4.5689,
+            })
+            .unwrap();
+        client_store
+            .execute(&TestTransaction {
+                id: 1,
+                amount: 4.5689,
+            })
+            .unwrap();
+        client_store
+            .execute(&TestTransaction {
+                id: 2,
+                amount: 4.5689,
+            })
+            .unwrap();
+        client_store
+            .execute(&TestTransaction {
+                id: 2,
+                amount: 4.5689,
+            })
+            .unwrap();
+        client_store
+            .execute(&TestTransaction {
+                id: 1,
+                amount: 4.5689,
+            })
+            .unwrap();
+        client_store
+            .execute(&TestTransaction {
+                id: 1,
+                amount: 4.5689,
+            })
+            .unwrap();
+        client_store
+            .execute(&TestTransaction {
+                id: 2,
+                amount: 4.5689,
+            })
+            .unwrap();
         assert_eq!(
             client_store.clients.get(&1).unwrap().available,
             4.5689 + 4.5689 + 4.5689 + 4.5689
@@ -270,6 +298,7 @@ mod tests {
 
     #[test]
     fn final_state_1_plus_1_transaction() {
+        // Use different transaction for testing
         struct TestTransaction {}
         impl Transaction for TestTransaction {
             fn execute(&self, client: &mut Client) -> Result<(), TransactionError> {
@@ -286,6 +315,10 @@ mod tests {
             fn transaction_id(&self) -> crate::TransactionID {
                 1
             }
+
+            fn amount(&self) -> Option<Amount> {
+                Some(1.0)
+            }
         }
         let mut client_store = ClientStore::new();
         client_store.execute(&TestTransaction {}).unwrap();
@@ -297,29 +330,31 @@ mod tests {
 
     #[test]
     fn final_state_multiple_transactions() {
-        struct TestTransaction {
-            id: ClientID,
-        }
-        impl Transaction for TestTransaction {
-            fn execute(&self, client: &mut Client) -> Result<(), TransactionError> {
-                // Add 4.5689 to avaialble
-                client.available += 4.5689;
-                Ok(())
-            }
-
-            fn requested_client_id(&self) -> ClientID {
-                self.id
-            }
-
-            fn transaction_id(&self) -> crate::TransactionID {
-                1
-            }
-        }
         let mut client_store = ClientStore::new();
-        client_store.execute(&TestTransaction { id: 1 }).unwrap();
-        client_store.execute(&TestTransaction { id: 1 }).unwrap();
-        client_store.execute(&TestTransaction { id: 1 }).unwrap();
-        client_store.execute(&TestTransaction { id: 1 }).unwrap();
+        client_store
+            .execute(&TestTransaction {
+                id: 1,
+                amount: 4.5689,
+            })
+            .unwrap();
+        client_store
+            .execute(&TestTransaction {
+                id: 1,
+                amount: 4.5689,
+            })
+            .unwrap();
+        client_store
+            .execute(&TestTransaction {
+                id: 1,
+                amount: 4.5689,
+            })
+            .unwrap();
+        client_store
+            .execute(&TestTransaction {
+                id: 1,
+                amount: 4.5689,
+            })
+            .unwrap();
         assert_eq!(
             client_store.clients.get(&1).unwrap().available,
             4.5689 + 4.5689 + 4.5689 + 4.5689
@@ -332,33 +367,55 @@ mod tests {
 
     #[test]
     fn final_state_multiple_transactions_multiple_clients() {
-        struct TestTransaction {
-            id: ClientID,
-        }
-        impl Transaction for TestTransaction {
-            fn execute(&self, client: &mut Client) -> Result<(), TransactionError> {
-                // Add 4.5689 to avaialble
-                client.available += 4.5689;
-                Ok(())
-            }
-
-            fn requested_client_id(&self) -> ClientID {
-                self.id
-            }
-
-            fn transaction_id(&self) -> crate::TransactionID {
-                1
-            }
-        }
         let mut client_store = ClientStore::new();
-        client_store.execute(&TestTransaction { id: 1 }).unwrap();
-        client_store.execute(&TestTransaction { id: 2 }).unwrap();
-        client_store.execute(&TestTransaction { id: 1 }).unwrap();
-        client_store.execute(&TestTransaction { id: 2 }).unwrap();
-        client_store.execute(&TestTransaction { id: 2 }).unwrap();
-        client_store.execute(&TestTransaction { id: 1 }).unwrap();
-        client_store.execute(&TestTransaction { id: 1 }).unwrap();
-        client_store.execute(&TestTransaction { id: 2 }).unwrap();
+        client_store
+            .execute(&TestTransaction {
+                id: 1,
+                amount: 4.5689,
+            })
+            .unwrap();
+        client_store
+            .execute(&TestTransaction {
+                id: 2,
+                amount: 4.5689,
+            })
+            .unwrap();
+        client_store
+            .execute(&TestTransaction {
+                id: 1,
+                amount: 4.5689,
+            })
+            .unwrap();
+        client_store
+            .execute(&TestTransaction {
+                id: 2,
+                amount: 4.5689,
+            })
+            .unwrap();
+        client_store
+            .execute(&TestTransaction {
+                id: 2,
+                amount: 4.5689,
+            })
+            .unwrap();
+        client_store
+            .execute(&TestTransaction {
+                id: 1,
+                amount: 4.5689,
+            })
+            .unwrap();
+        client_store
+            .execute(&TestTransaction {
+                id: 1,
+                amount: 4.5689,
+            })
+            .unwrap();
+        client_store
+            .execute(&TestTransaction {
+                id: 2,
+                amount: 4.5689,
+            })
+            .unwrap();
         assert_eq!(&client_store.get_current_state(true).unwrap(), "client,available,held,total,locked\n1,18.2756,0.0,18.2756,false\n2,18.2756,0.0,18.2756,false\n");
     }
 }
