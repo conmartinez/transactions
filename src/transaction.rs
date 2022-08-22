@@ -34,14 +34,16 @@ impl From<CsvLine> for Box<dyn Transaction> {
                 Box::new(Deposit::new(csv_line.tx, csv_line.client, csv_line.amount))
                     as Box<dyn Transaction>
             }
-            CsvLineType::Withdrawal => Box::new(Withdrawal::new(
-                csv_line.tx,
-                csv_line.client,
-                csv_line.amount,
-            )) as Box<dyn Transaction>,
+            CsvLineType::Withdrawal => {
+                Box::new(Withdrawal::new(csv_line.tx, csv_line.client, csv_line.amount)) 
+                    as Box<dyn Transaction>
+            },
             CsvLineType::Dispute => {
                 Box::new(Dispute::new(csv_line.tx, csv_line.client)) as Box<dyn Transaction>
             }
+            CsvLineType::Resolve => {
+                Box::new(Resolve::new(csv_line.tx, csv_line.client)) as Box<dyn Transaction>
+            },
         }
     }
 }
@@ -179,6 +181,55 @@ impl Transaction for Dispute {
     }
 }
 
+struct Resolve {
+    transaction_id: TransactionID,
+    client_id: ClientID,
+}
+
+impl Resolve {
+    pub fn new(transaction_id: TransactionID, client_id: ClientID) -> Self {
+        Self {
+            transaction_id,
+            client_id,
+        }
+    }
+}
+
+impl Transaction for Resolve {
+    /// Execute the transaction on the ClientStore.
+    ///
+    /// Resolve the disputed transaction.
+    /// Move amount in question from held to total
+    fn execute(&self, client: &mut Client) -> Result<(), TransactionError> {
+        match client.client_history.get_mut(&self.transaction_id) {
+            Some(history) => {
+                if history.dispute {
+                    history.dispute = false;
+                    client.available += history.amount;
+                    client.held -= history.amount;
+                }
+            }
+            None => {
+                // Ignore, erroneous transaction.
+                // Don't consider this an error
+            }
+        }
+        Ok(())
+    }
+
+    fn requested_client_id(&self) -> ClientID {
+        self.client_id
+    }
+
+    fn transaction_id(&self) -> TransactionID {
+        self.transaction_id
+    }
+
+    fn amount(&self) -> Option<Amount> {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -238,7 +289,6 @@ mod tests {
         deposit.execute(&mut client).unwrap();
         dispute.execute(&mut client).unwrap();
         assert_eq!(client.available, 10.0000);
-        assert_eq!(client.available, 10.0000);
         assert_eq!(client.held, 5.0000);
         assert_eq!(client.total(), 15.0000);
         assert_eq!(
@@ -246,6 +296,29 @@ mod tests {
             Some(&History {
                 amount: 5.0,
                 dispute: true
+            })
+        );
+    }
+
+    #[test]
+    fn resolve_dispute() {
+        let mut client = Client::new(157);
+        client.available = 10.0;
+        let deposit = Deposit::new(1, 157, 5.0);
+        let dispute = Dispute::new(1, 157);
+        let resolve = Resolve::new(1, 157);
+
+        deposit.execute(&mut client).unwrap();
+        dispute.execute(&mut client).unwrap();
+        resolve.execute(&mut client).unwrap();
+        assert_eq!(client.available, 15.0000);
+        assert_eq!(client.held, 0.0000);
+        assert_eq!(client.total(), 15.0000);
+        assert_eq!(
+            client.client_history.get(&1),
+            Some(&History {
+                amount: 5.0,
+                dispute: false
             })
         );
     }

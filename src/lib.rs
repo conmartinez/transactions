@@ -20,6 +20,8 @@ enum CsvLineType {
     Deposit,
     #[serde(rename = "dispute")]
     Dispute,
+    #[serde(rename = "resolve")]
+    Resolve,
     #[serde(rename = "withdrawal")]
     Withdrawal,
 }
@@ -125,8 +127,28 @@ mod tests {
     }
 
     #[test]
+    fn de_resolve() {
+        let data = "t_type,client,tx,amount\nresolve,1,1,\n";
+        let expected = CsvLine {
+            t_type: CsvLineType::Resolve,
+            client: 1,
+            tx: 1,
+            amount: 0.0,
+        };
+        let mut reader = ReaderBuilder::new().from_reader(data.as_bytes());
+        let mut results = vec![];
+        for result in reader.deserialize::<CsvLine>() {
+            results.push(result.unwrap())
+        }
+
+        assert_eq!(results.len(), 1);
+        let result = results.get(0).unwrap();
+        assert_eq!(result, &expected);
+    }
+
+    #[test]
     fn de_all() {
-        let data = "t_type,client,tx,amount\nwithdrawal,1,1,15\ndeposit,1,1,15\ndispute,1,1,\n";
+        let data = "t_type,client,tx,amount\nwithdrawal,1,1,15\ndeposit,1,1,15\ndispute,1,1,\nresolve,1,1,\n";
         let expected_withdrawal = CsvLine {
             t_type: CsvLineType::Withdrawal,
             client: 1,
@@ -145,18 +167,26 @@ mod tests {
             tx: 1,
             amount: 0.0,
         };
+        let expected_resolve = CsvLine {
+            t_type: CsvLineType::Resolve,
+            client: 1,
+            tx: 1,
+            amount: 0.0,
+        };
         let mut reader = ReaderBuilder::new().from_reader(data.as_bytes());
         let mut results = vec![];
         for result in reader.deserialize::<CsvLine>() {
             results.push(result.unwrap())
         }
 
-        assert_eq!(results.len(), 3);
+        assert_eq!(results.len(), 4);
         let result_withdrawal = results.get(0).unwrap();
         assert_eq!(result_withdrawal, &expected_withdrawal);
         let result_deposit = results.get(1).unwrap();
         assert_eq!(result_deposit, &expected_deposit);
         let result_dispute = results.get(2).unwrap();
         assert_eq!(result_dispute, &expected_dispute);
+        let result_resolve = results.get(3).unwrap();
+        assert_eq!(result_resolve, &expected_resolve);
     }
 }
