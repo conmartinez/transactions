@@ -99,3 +99,23 @@ fn handle_transations_deposits_withdrawals_dispute_and_resolve_multi_client() {
     let state = client_store.get_current_state(true).unwrap();
     assert_eq!(state, expected);
 }
+
+#[test]
+fn handle_transations_deposits_withdrawals_dispute_and_chargeback_one_client() {
+    let csv = include_str!("../data/deposit_withdrawal_dispute_and_chargeback_one_client.csv");
+    let expected = "client,available,held,total,locked\n1,1.5,0.0,1.5,true\n";
+    let mut client_store = ClientStore::new();
+    transactions::handle_transactions_from_reader(csv.as_bytes(), &mut client_store);
+    let state = client_store.get_current_state(true).unwrap();
+    assert_eq!(state, expected);
+}
+
+#[test]
+fn handle_transations_deposits_withdrawals_dispute_and_chargeback_multi_client() {
+    let csv = include_str!("../data/deposit_withdrawal_dispute_and_chargeback_multi_client.csv");
+    let expected = "client,available,held,total,locked\n1,3.0,0.0,3.0,true\n2,7.5,0.0,7.5,true\n3,10.5,0.0,10.5,true\n";
+    let mut client_store = ClientStore::new();
+    transactions::handle_transactions_from_reader(csv.as_bytes(), &mut client_store);
+    let state = client_store.get_current_state(true).unwrap();
+    assert_eq!(state, expected);
+}

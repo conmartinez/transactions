@@ -39,3 +39,9 @@ impl From<&str> for TransactionError {
         Self(err.to_owned())
     }
 }
+
+impl From<String> for TransactionError {
+    fn from(err: String) -> Self {
+        Self(err)
+    }
+}
