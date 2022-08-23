@@ -8,13 +8,17 @@ use crate::error::TransactionError;
 use crate::transaction::Transaction;
 use crate::{Amount, ClientID, TransactionID};
 
+/// History of a client's transactions
 #[derive(Debug, PartialEq)]
 pub struct History {
+    /// Amount of the transaction
     pub amount: Amount,
+    /// Boolean value if the transaction is being disputed.
     pub dispute: bool,
 }
 
 impl History {
+    /// Create a new History with the Amount
     pub fn new(amount: Amount) -> Self {
         Self {
             amount,
@@ -25,6 +29,7 @@ impl History {
 
 /// Representation of a client's account
 pub struct Client {
+    /// Client's unique identifer
     pub id: ClientID,
     /// Ammount of currently available funds
     pub available: Amount,
@@ -37,6 +42,7 @@ pub struct Client {
 }
 
 impl Client {
+    /// Create a new Client with the ID
     pub fn new(id: ClientID) -> Self {
         Client {
             id,
@@ -47,7 +53,7 @@ impl Client {
         }
     }
 
-    /// Get the total ammount of funds
+    /// Get the client's total ammount of funds
     ///
     /// This is `available funds` + `held funds`
     pub fn total(&self) -> Amount {
@@ -55,6 +61,11 @@ impl Client {
     }
 }
 
+/// Custom serialize implementation to add new fields
+///
+/// Adds the total field to the serialization so total
+/// does not need to be tracked as a field since it can be
+/// derived from held and available.
 impl Serialize for Client {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -70,20 +81,27 @@ impl Serialize for Client {
     }
 }
 
+/// Collection of all Clients.
+///
+/// All Clients will have a unique Identifer.
 pub struct ClientStore {
-    /// Collection of all Clients.
-    /// Assumption: All Clients will have a unique ID
+    /// Map of a client's unique identifer to a client.
     pub clients: HashMap<ClientID, Client>,
 }
 
 impl ClientStore {
+    /// Create a new ClientStore for storing all clients
     pub fn new() -> Self {
         Self {
             clients: HashMap::new(),
         }
     }
 
-    /// Execute the transaction.
+    /// Execute the transaction on the store.
+    ///
+    /// Get the client, or create the client if it is it's first transaction
+    /// and execute the transaction on the client. What the transaction does
+    /// is up to the transaction implementation.
     pub fn execute<T>(&mut self, transaction: &T) -> Result<(), TransactionError>
     where
         T: Transaction + ?Sized,
@@ -101,6 +119,13 @@ impl ClientStore {
         }
     }
 
+    /// Get the current state of all the clients in the store.
+    ///
+    /// Returns a string representation of all the clients, their funds, and status in the store.
+    /// If a client state can not be converted to a string, all other clients are ignored
+    /// and an error is returned.
+    /// 
+    /// Clients in the final state can optionally be sorted by their client.
     pub fn get_current_state(&self, sort: bool) -> Result<String, TransactionError> {
         let mut state = Vec::new();
         {
@@ -118,6 +143,12 @@ impl ClientStore {
             writer.flush()?;
         }
         Ok(String::from_utf8(state)?)
+    }
+}
+
+impl Default for ClientStore {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -174,10 +205,6 @@ mod tests {
 
         fn requested_client_id(&self) -> ClientID {
             self.id
-        }
-
-        fn transaction_id(&self) -> crate::TransactionID {
-            1
         }
 
         fn amount(&self) -> Option<Amount> {
@@ -309,10 +336,6 @@ mod tests {
             }
 
             fn requested_client_id(&self) -> ClientID {
-                1
-            }
-
-            fn transaction_id(&self) -> crate::TransactionID {
                 1
             }
 

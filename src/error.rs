@@ -6,7 +6,10 @@ use std::{
 
 use csv::Error as CsvError;
 
-/// Simple error type.
+/// Error type used when handling transactions.
+///
+/// New type now to allow for easy usage.
+/// Improved error handling can be added later.
 #[derive(Debug)]
 pub struct TransactionError(String);
 

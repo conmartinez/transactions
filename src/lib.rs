@@ -9,10 +9,17 @@ pub mod client;
 mod error;
 mod transaction;
 
+/// Unique Client Identifer
 type ClientID = u16;
+/// Unique Tranaction Identifier
 type TransactionID = u32;
+/// Amount type
+///
+/// Easily changable if needed for more percision or
+/// if larger numbers are needed.
 type Amount = f64;
 
+/// Type of transaction from CSV input
 #[derive(Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename = "type")]
 enum CsvLineType {
@@ -28,15 +35,26 @@ enum CsvLineType {
     Withdrawal,
 }
 
-#[derive(Debug, Deserialize, Serialize, PartialEq)]
+/// CSV input data structure for transactions
+#[derive(Debug, Deserialize, PartialEq)]
 struct CsvLine {
+    /// Type of transaction from CSV input
     t_type: CsvLineType,
+    /// Client to execute transaction on
     client: ClientID,
+    /// Unique Transaction Identifer
     tx: TransactionID,
+    /// Ammount of funds to modify account
+    ///
+    /// Not all transaction types may have an amount with them.
+    /// This struct is only for handling input, so default amount
+    /// to 0 if not in input and let the Transaction impls handle
+    /// this.
     #[serde(deserialize_with = "default_empty_amount_to_zero")]
     amount: Amount,
 }
 
+/// Custom deserializer to allow for empty Amount's to default to 0.
 fn default_empty_amount_to_zero<'de, D>(deserializer: D) -> Result<Amount, D::Error>
 where
     D: Deserializer<'de>,
@@ -45,6 +63,12 @@ where
     Ok(opt.unwrap_or(0.0))
 }
 
+/// Handle transactions and execute them on the appropriate client.
+///
+/// Reader is assumed to be a reader over CSV data and the csv may use white space
+/// to make it more human readable.
+/// If an error occurs processing a single transaction, it is assumed to be an error
+/// on the client. The error will be logged to stderr and processing will continue.
 pub fn handle_transactions_from_reader<R>(reader: R, store: &mut ClientStore)
 where
     R: Read,

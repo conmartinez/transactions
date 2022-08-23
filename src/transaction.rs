@@ -4,6 +4,11 @@ use crate::{
     Amount, ClientID, CsvLine, CsvLineType, TransactionID,
 };
 
+/// Transaction trait
+///
+/// Transactions operate on clients.
+/// Concrete transactions are responsible for deciding what
+/// happens to an account when a Transaction is executed.
 pub trait Transaction {
     /// Execute the transaction on the ClientStore.
     ///
@@ -14,11 +19,6 @@ pub trait Transaction {
     ///
     /// Generic method for getting the transaction's client id.
     fn requested_client_id(&self) -> ClientID;
-
-    /// Get the ID of this transaction
-    ///
-    /// Generic method for getting the transaction's id.
-    fn transaction_id(&self) -> TransactionID;
 
     /// Get the Amount of this transaction
     ///
@@ -32,32 +32,38 @@ impl From<CsvLine> for Box<dyn Transaction> {
         match csv_line.t_type {
             CsvLineType::Chargeback => {
                 Box::new(Chargeback::new(csv_line.tx, csv_line.client)) as Box<dyn Transaction>
-            },
+            }
             CsvLineType::Deposit => {
                 Box::new(Deposit::new(csv_line.tx, csv_line.client, csv_line.amount))
                     as Box<dyn Transaction>
-            },
-            CsvLineType::Withdrawal => {
-                Box::new(Withdrawal::new(csv_line.tx, csv_line.client, csv_line.amount)) 
-                    as Box<dyn Transaction>
-            },
+            }
+            CsvLineType::Withdrawal => Box::new(Withdrawal::new(
+                csv_line.tx,
+                csv_line.client,
+                csv_line.amount,
+            )) as Box<dyn Transaction>,
             CsvLineType::Dispute => {
                 Box::new(Dispute::new(csv_line.tx, csv_line.client)) as Box<dyn Transaction>
-            },
+            }
             CsvLineType::Resolve => {
                 Box::new(Resolve::new(csv_line.tx, csv_line.client)) as Box<dyn Transaction>
-            },
+            }
         }
     }
 }
 
+/// Deposit Transaction
 struct Deposit {
+    /// Unique transaction identifer
     transaction_id: TransactionID,
+    /// Client to deposits funds to
     client_id: ClientID,
-    ammount: f64,
+    /// Ammount of funds to deposit
+    ammount: Amount,
 }
 
 impl Deposit {
+    /// Create a new Deposit for a client with an amount and a specific transaction id
     pub fn new(transaction_id: TransactionID, client_id: ClientID, ammount: f64) -> Self {
         Self {
             transaction_id,
@@ -68,12 +74,13 @@ impl Deposit {
 }
 
 impl Transaction for Deposit {
-    /// Execute the transaction on the ClientStore.
+    /// Add funds to available balance of the client
     ///
-    /// Add money to available balance of the acount
+    /// If the client is not locked, funds are added to avialable balance, otherwise deposit is ignored.
+    /// The deposit is also added to the client history in case it needs to be disputed.
     fn execute(&self, client: &mut Client) -> Result<(), TransactionError> {
         if client.locked {
-            return Err("Could not deposit funds. Account is locked.".into())
+            return Err("Could not deposit funds. Account is locked.".into());
         }
         client.available += self.ammount;
         client
@@ -82,14 +89,14 @@ impl Transaction for Deposit {
         Ok(())
     }
 
+    // Get the Client ID this transaction is meant to run against
     fn requested_client_id(&self) -> ClientID {
         self.client_id
     }
 
-    fn transaction_id(&self) -> TransactionID {
-        self.transaction_id
-    }
-
+    /// Get the Amount of this transaction
+    ///
+    /// Desposits have an associated ammount
     fn amount(&self) -> Option<Amount> {
         Some(self.ammount)
     }
@@ -102,6 +109,7 @@ struct Withdrawal {
 }
 
 impl Withdrawal {
+    /// Create a new Withdrawal for a client with an amount and a specific transaction id
     pub fn new(transaction_id: TransactionID, client_id: ClientID, ammount: f64) -> Self {
         Self {
             transaction_id,
@@ -112,12 +120,14 @@ impl Withdrawal {
 }
 
 impl Transaction for Withdrawal {
-    /// Execute the transaction on the ClientStore.
+    /// Remove funds from available balance of the client
     ///
-    /// Remove money to available balance of the acount
+    /// If the client is not locked, funds are removed from avialable balance, otherwise
+    /// withdrawal is ignored. The withdrawal is also added to the client history in case
+    /// it needs to be disputed.
     fn execute(&self, client: &mut Client) -> Result<(), TransactionError> {
         if client.locked {
-            return Err("Could not withdrawal funds. Account is locked.".into())
+            return Err("Could not withdrawal funds. Account is locked.".into());
         }
         if client.available < self.ammount {
             Err("Insufficent funds!".into())
@@ -130,14 +140,14 @@ impl Transaction for Withdrawal {
         }
     }
 
+    // Get the Client ID this transaction is meant to run against
     fn requested_client_id(&self) -> ClientID {
         self.client_id
     }
 
-    fn transaction_id(&self) -> TransactionID {
-        self.transaction_id
-    }
-
+    /// Get the Amount of this transaction
+    ///
+    /// Withdrawals have an associated ammount
     fn amount(&self) -> Option<Amount> {
         Some(self.ammount)
     }
@@ -148,6 +158,7 @@ struct Dispute {
 }
 
 impl Dispute {
+    /// Create a new Dispute for a client on a specific transaction
     pub fn new(transaction_id: TransactionID, client_id: ClientID) -> Self {
         Self {
             transaction_id,
@@ -157,12 +168,15 @@ impl Dispute {
 }
 
 impl Transaction for Dispute {
-    /// Execute the transaction on the ClientStore.
+    /// Dispute a previous transaction.
     ///
-    /// Remove money to available balance of the acount
+    /// Mark a previous transaction as dispute and transation funds to held.
+    /// If account is locked or the referenced transaction is not found,
+    /// the dispute is ignored. If the transaction is already under dispute,
+    /// the most recent dispute is also ignored.
     fn execute(&self, client: &mut Client) -> Result<(), TransactionError> {
         if client.locked {
-            return Err("Could not dispute funds. Account is locked.".into())
+            return Err("Could not dispute funds. Account is locked.".into());
         }
         match client.client_history.get_mut(&self.transaction_id) {
             Some(history) => {
@@ -172,23 +186,30 @@ impl Transaction for Dispute {
                     client.held += history.amount;
                     Ok(())
                 } else {
-                    Err(format!("Specified transaction {} for client {} is not already disputed.", self.transaction_id, self.client_id).into()) 
+                    Err(format!(
+                        "Specified transaction {} for client {} is not already disputed.",
+                        self.transaction_id, self.client_id
+                    )
+                    .into())
                 }
             }
-            None => {
-                Err(format!("No transaction {} found for client {}", self.transaction_id, self.client_id).into())
-            }
+            None => Err(format!(
+                "No transaction {} found for client {}",
+                self.transaction_id, self.client_id
+            )
+            .into()),
         }
     }
 
+    // Get the Client ID this transaction is meant to run against
     fn requested_client_id(&self) -> ClientID {
         self.client_id
     }
 
-    fn transaction_id(&self) -> TransactionID {
-        self.transaction_id
-    }
-
+    /// Get the Amount of this transaction
+    ///
+    /// Disputes do not have an associated ammount, rather they
+    /// refrence a previous transaction.
     fn amount(&self) -> Option<Amount> {
         None
     }
@@ -200,6 +221,7 @@ struct Resolve {
 }
 
 impl Resolve {
+    /// Create a new Resolve for a client on a specific transaction
     pub fn new(transaction_id: TransactionID, client_id: ClientID) -> Self {
         Self {
             transaction_id,
@@ -209,13 +231,15 @@ impl Resolve {
 }
 
 impl Transaction for Resolve {
-    /// Execute the transaction on the ClientStore.
-    ///
     /// Resolve the disputed transaction.
-    /// Move amount in question from held to total
+    ///
+    /// Move amount in question from held to available.
+    /// If account is locked or the referenced transaction is not found,
+    /// the resolve is ignored. If the transaction is not under dispute,
+    /// the resolve is also ignored.
     fn execute(&self, client: &mut Client) -> Result<(), TransactionError> {
         if client.locked {
-            return Err("Could not resolve funds. Account is locked.".into())
+            return Err("Could not resolve funds. Account is locked.".into());
         }
         match client.client_history.get_mut(&self.transaction_id) {
             Some(history) => {
@@ -225,23 +249,30 @@ impl Transaction for Resolve {
                     client.held -= history.amount;
                     Ok(())
                 } else {
-                    Err(format!("Specified transaction {} for client {} is not being disputed.", self.transaction_id, self.client_id).into()) 
+                    Err(format!(
+                        "Specified transaction {} for client {} is not being disputed.",
+                        self.transaction_id, self.client_id
+                    )
+                    .into())
                 }
             }
-            None => {
-                Err(format!("No transaction {} found for client {}", self.transaction_id, self.client_id).into())
-            }
+            None => Err(format!(
+                "No transaction {} found for client {}",
+                self.transaction_id, self.client_id
+            )
+            .into()),
         }
     }
 
+    // Get the Client ID this transaction is meant to run against
     fn requested_client_id(&self) -> ClientID {
         self.client_id
     }
 
-    fn transaction_id(&self) -> TransactionID {
-        self.transaction_id
-    }
-
+    /// Get the Amount of this transaction
+    ///
+    /// Resolves do not have an associated ammount, rather they
+    /// refrence a previous transaction.
     fn amount(&self) -> Option<Amount> {
         None
     }
@@ -253,6 +284,7 @@ struct Chargeback {
 }
 
 impl Chargeback {
+    /// Create a new Chargeback for a client on a specific transaction
     pub fn new(transaction_id: TransactionID, client_id: ClientID) -> Self {
         Self {
             transaction_id,
@@ -262,13 +294,15 @@ impl Chargeback {
 }
 
 impl Transaction for Chargeback {
-    /// Execute the transaction on the ClientStore.
+    /// Chargeback the disputed transaction.
     ///
-    /// Resolve the disputed transaction.
-    /// Remove the amount in question from held and lock account
+    /// Remove amount in question from held and total.
+    /// If account is locked or the referenced transaction is not found,
+    /// the chargeback is ignored. If the transaction is not under dispute,
+    /// the chargeback is also ignored.
     fn execute(&self, client: &mut Client) -> Result<(), TransactionError> {
         if client.locked {
-            return Err("Could not chargeback funds. Account is locked.".into())
+            return Err("Could not chargeback funds. Account is locked.".into());
         }
         match client.client_history.get_mut(&self.transaction_id) {
             Some(history) => {
@@ -278,28 +312,34 @@ impl Transaction for Chargeback {
                     client.locked = true;
                     Ok(())
                 } else {
-                    Err(format!("Specified transaction {} for client {} is not being disputed.", self.transaction_id, self.client_id).into()) 
+                    Err(format!(
+                        "Specified transaction {} for client {} is not being disputed.",
+                        self.transaction_id, self.client_id
+                    )
+                    .into())
                 }
             }
-            None => {
-                Err(format!("No transaction {} found for client {}", self.transaction_id, self.client_id).into())
-            }
+            None => Err(format!(
+                "No transaction {} found for client {}",
+                self.transaction_id, self.client_id
+            )
+            .into()),
         }
     }
 
+    // Get the Client ID this transaction is meant to run against
     fn requested_client_id(&self) -> ClientID {
         self.client_id
     }
 
-    fn transaction_id(&self) -> TransactionID {
-        self.transaction_id
-    }
-
+    /// Get the Amount of this transaction
+    ///
+    /// Chargebacks do not have an associated ammount, rather they
+    /// refrence a previous transaction.
     fn amount(&self) -> Option<Amount> {
         None
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -528,5 +568,4 @@ mod tests {
         // Loose error handling in place. Just verify an error is returned
         chargeback.execute(&mut client).unwrap_err();
     }
-
 }
