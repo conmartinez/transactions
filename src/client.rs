@@ -31,9 +31,9 @@ impl History {
 pub struct Client {
     /// Client's unique identifer
     pub id: ClientID,
-    /// Ammount of currently available funds
+    /// Amount of currently available funds
     pub available: Amount,
-    /// Ammount of currently held funds
+    /// Amount of currently held funds
     pub held: Amount,
     /// Client is locked status
     pub locked: bool,
@@ -53,7 +53,7 @@ impl Client {
         }
     }
 
-    /// Get the client's total ammount of funds
+    /// Get the client's total amount of funds
     ///
     /// This is `available funds` + `held funds`
     pub fn total(&self) -> Amount {

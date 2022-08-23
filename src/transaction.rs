@@ -58,17 +58,17 @@ struct Deposit {
     transaction_id: TransactionID,
     /// Client to deposits funds to
     client_id: ClientID,
-    /// Ammount of funds to deposit
-    ammount: Amount,
+    /// Amount of funds to deposit
+    amount: Amount,
 }
 
 impl Deposit {
     /// Create a new Deposit for a client with an amount and a specific transaction id
-    pub fn new(transaction_id: TransactionID, client_id: ClientID, ammount: f64) -> Self {
+    pub fn new(transaction_id: TransactionID, client_id: ClientID, amount: f64) -> Self {
         Self {
             transaction_id,
             client_id,
-            ammount,
+            amount,
         }
     }
 }
@@ -82,10 +82,10 @@ impl Transaction for Deposit {
         if client.locked {
             return Err("Could not deposit funds. Account is locked.".into());
         }
-        client.available += self.ammount;
+        client.available += self.amount;
         client
             .client_history
-            .insert(self.transaction_id, History::new(self.ammount));
+            .insert(self.transaction_id, History::new(self.amount));
         Ok(())
     }
 
@@ -96,25 +96,25 @@ impl Transaction for Deposit {
 
     /// Get the Amount of this transaction
     ///
-    /// Desposits have an associated ammount
+    /// Desposits have an associated amount
     fn amount(&self) -> Option<Amount> {
-        Some(self.ammount)
+        Some(self.amount)
     }
 }
 
 struct Withdrawal {
     transaction_id: TransactionID,
     client_id: ClientID,
-    ammount: f64,
+    amount: f64,
 }
 
 impl Withdrawal {
     /// Create a new Withdrawal for a client with an amount and a specific transaction id
-    pub fn new(transaction_id: TransactionID, client_id: ClientID, ammount: f64) -> Self {
+    pub fn new(transaction_id: TransactionID, client_id: ClientID, amount: f64) -> Self {
         Self {
             transaction_id,
             client_id,
-            ammount,
+            amount,
         }
     }
 }
@@ -129,13 +129,13 @@ impl Transaction for Withdrawal {
         if client.locked {
             return Err("Could not withdrawal funds. Account is locked.".into());
         }
-        if client.available < self.ammount {
+        if client.available < self.amount {
             Err("Insufficent funds!".into())
         } else {
-            client.available -= self.ammount;
+            client.available -= self.amount;
             client
                 .client_history
-                .insert(self.transaction_id, History::new(self.ammount));
+                .insert(self.transaction_id, History::new(self.amount));
             Ok(())
         }
     }
@@ -147,9 +147,9 @@ impl Transaction for Withdrawal {
 
     /// Get the Amount of this transaction
     ///
-    /// Withdrawals have an associated ammount
+    /// Withdrawals have an associated amount
     fn amount(&self) -> Option<Amount> {
-        Some(self.ammount)
+        Some(self.amount)
     }
 }
 struct Dispute {
@@ -208,7 +208,7 @@ impl Transaction for Dispute {
 
     /// Get the Amount of this transaction
     ///
-    /// Disputes do not have an associated ammount, rather they
+    /// Disputes do not have an associated amount, rather they
     /// refrence a previous transaction.
     fn amount(&self) -> Option<Amount> {
         None
@@ -271,7 +271,7 @@ impl Transaction for Resolve {
 
     /// Get the Amount of this transaction
     ///
-    /// Resolves do not have an associated ammount, rather they
+    /// Resolves do not have an associated amount, rather they
     /// refrence a previous transaction.
     fn amount(&self) -> Option<Amount> {
         None
@@ -334,7 +334,7 @@ impl Transaction for Chargeback {
 
     /// Get the Amount of this transaction
     ///
-    /// Chargebacks do not have an associated ammount, rather they
+    /// Chargebacks do not have an associated amount, rather they
     /// refrence a previous transaction.
     fn amount(&self) -> Option<Amount> {
         None
@@ -347,40 +347,40 @@ mod tests {
 
     #[test]
     fn deposit_345_4823_to_empty_client() {
-        let ammount = 345.4823;
+        let amount = 345.4823;
         let mut client = Client::new(157);
-        let transaction = Deposit::new(1, 157, ammount);
+        let transaction = Deposit::new(1, 157, amount);
 
         transaction.execute(&mut client).unwrap();
         // verify available is expected
-        assert_eq!(client.available, ammount);
+        assert_eq!(client.available, amount);
         // verify other values are not touched
         assert_eq!(client.held, 0.0);
         assert_eq!(client.locked, false);
-        assert_eq!(client.client_history.get(&1).unwrap().amount, ammount)
+        assert_eq!(client.client_history.get(&1).unwrap().amount, amount)
     }
 
     #[test]
     fn withdrawal_45_7611_from_a_client_with_sufficent_funds() {
-        let ammount = 35.7611;
+        let amount = 35.7611;
         let mut client = Client::new(157);
         client.available = 300.00;
-        let transaction = Withdrawal::new(1, 157, ammount);
+        let transaction = Withdrawal::new(1, 157, amount);
 
         transaction.execute(&mut client).unwrap();
 
-        assert_eq!(client.available, 300.00 - ammount);
+        assert_eq!(client.available, 300.00 - amount);
         assert_eq!(client.held, 0.0);
         assert_eq!(client.locked, false);
-        assert_eq!(client.client_history.get(&1).unwrap().amount, ammount)
+        assert_eq!(client.client_history.get(&1).unwrap().amount, amount)
     }
 
     #[test]
     fn withdrawal_45_7611_from_a_client_with_insufficent_funds() {
-        let ammount = 35.7611;
+        let amount = 35.7611;
         let mut client = Client::new(157);
         client.available = 30.0000;
-        let transaction = Withdrawal::new(1, 157, ammount);
+        let transaction = Withdrawal::new(1, 157, amount);
 
         // verify it errors. Don't care what the error is now becuase of simple error handling in place.
         transaction.execute(&mut client).unwrap_err();
@@ -460,10 +460,10 @@ mod tests {
 
     #[test]
     fn deposit_to_locked_account_errors() {
-        let ammount = 345.4823;
+        let amount = 345.4823;
         let mut client = Client::new(157);
         client.locked = true;
-        let transaction = Deposit::new(1, 157, ammount);
+        let transaction = Deposit::new(1, 157, amount);
 
         // Loose error handling in place. Just verify an error is returned
         transaction.execute(&mut client).unwrap_err();
@@ -471,10 +471,10 @@ mod tests {
 
     #[test]
     fn withdrawal_from_locked_account_errors() {
-        let ammount = 345.4823;
+        let amount = 345.4823;
         let mut client = Client::new(157);
         client.locked = true;
-        let transaction = Withdrawal::new(1, 157, ammount);
+        let transaction = Withdrawal::new(1, 157, amount);
 
         // Loose error handling in place. Just verify an error is returned
         transaction.execute(&mut client).unwrap_err();

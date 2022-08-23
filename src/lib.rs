@@ -44,7 +44,7 @@ struct CsvLine {
     client: ClientID,
     /// Unique Transaction Identifer
     tx: TransactionID,
-    /// Ammount of funds to modify account
+    /// Amount of funds to modify account
     ///
     /// Not all transaction types may have an amount with them.
     /// This struct is only for handling input, so default amount
